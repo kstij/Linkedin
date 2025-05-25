@@ -7,14 +7,15 @@ import Head from 'next/head';
 interface Coupon {
   _id: string;
   code: string;
-  redeemLink: string;
-  isRedeemed: boolean;
-  redeemedAt: string | null;
-  redeemedBy: {
+  claimLink: string;
+  isClaimed: boolean;
+  claimedAt: string | null;
+  claimedBy: {
     ip: string;
     userAgent: string;
   } | null;
   createdAt: string;
+  createdBy: string;
 }
 
 export default function Dashboard() {
@@ -81,7 +82,7 @@ export default function Dashboard() {
           'Content-Type': 'application/json',
         },
         credentials: 'include',
-        body: JSON.stringify({ redeemLink: claimLink }),
+        body: JSON.stringify({ claimLink: claimLink }),
       });
 
       if (!response.ok) {
@@ -211,7 +212,7 @@ export default function Dashboard() {
                           <code className="px-2 py-1 bg-gray-100 rounded">{coupon.code}</code>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          {coupon.isRedeemed ? (
+                          {coupon.isClaimed ? (
                             <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
                               Claimed
                             </span>
@@ -225,14 +226,14 @@ export default function Dashboard() {
                           {new Date(coupon.createdAt).toLocaleString()}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {coupon.redeemedAt ? new Date(coupon.redeemedAt).toLocaleString() : '-'}
+                          {coupon.claimedAt ? new Date(coupon.claimedAt).toLocaleString() : '-'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {coupon.redeemedBy ? (
+                          {coupon.claimedBy ? (
                             <div>
-                              <div className="font-medium">IP: {coupon.redeemedBy.ip}</div>
+                              <div className="font-medium">IP: {coupon.claimedBy.ip}</div>
                               <div className="text-xs text-gray-400 truncate max-w-xs">
-                                {coupon.redeemedBy.userAgent}
+                                {coupon.claimedBy.userAgent}
                               </div>
                             </div>
                           ) : (

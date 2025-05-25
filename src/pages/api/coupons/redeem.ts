@@ -23,25 +23,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(404).json({ error: 'Invalid code' });
     }
 
-    if (coupon.isRedeemed) {
-      return res.status(400).json({ error: 'Code has already been redeemed' });
+    if (coupon.isClaimed) {
+      return res.status(400).json({ error: 'Code has already been claimed' });
     }
 
     // Get IP address and user agent
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
     const userAgent = req.headers['user-agent'];
 
-    // Update coupon with redeem details
-    coupon.isRedeemed = true;
-    coupon.redeemedAt = new Date();
-    coupon.redeemedBy = {
+    // Update coupon with claim details
+    coupon.isClaimed = true;
+    coupon.claimedAt = new Date();
+    coupon.claimedBy = {
       ip: ip as string,
       userAgent: userAgent as string,
     };
 
     await coupon.save();
 
-    res.status(200).json({ redeemLink: coupon.redeemLink });
+    res.status(200).json({ claimLink: coupon.claimLink });
   } catch (error) {
     res.status(500).json({ error: 'Failed to redeem coupon' });
   }

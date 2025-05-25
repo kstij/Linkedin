@@ -68,5 +68,5 @@ export default NextAuth({
       return session;
     },
   },
-  debug: true,
+  debug: process.env.NODE_ENV === 'development',
 }); 

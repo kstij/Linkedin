@@ -1,9 +1,16 @@
 import mongoose from 'mongoose';
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/linkedin-coupon';
+const MONGODB_URI = process.env.MONGODB_URI!;
 
 if (!MONGODB_URI) {
-  throw new Error('Please define the MONGODB_URI environment variable inside .env.local');
+  throw new Error('Please define the MONGODB_URI environment variable inside .env');
+}
+
+declare global {
+  var mongoose: {
+    conn: typeof mongoose | null;
+    promise: Promise<typeof mongoose> | null;
+  };
 }
 
 let cached = global.mongoose;
@@ -22,22 +29,15 @@ async function connectDB() {
       bufferCommands: false,
     };
 
-    try {
-      cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => {
-        console.log('MongoDB connected successfully');
-        return mongoose;
-      });
-    } catch (error) {
-      console.error('MongoDB connection error:', error);
-      throw error;
-    }
+    cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => {
+      return mongoose;
+    });
   }
 
   try {
     cached.conn = await cached.promise;
   } catch (e) {
     cached.promise = null;
-    console.error('MongoDB connection error:', e);
     throw e;
   }
 
