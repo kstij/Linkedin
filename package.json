@@ -1,0 +1,39 @@
+{
+  "name": "linkedin-coupon-redeem",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@heroicons/react": "^2.2.0",
+    "autoprefixer": "^10.4.21",
+    "bcryptjs": "^2.4.3",
+    "framer-motion": "^12.12.2",
+    "mongoose": "^8.15.0",
+    "nanoid": "^5.1.5",
+    "next": "^14.1.0",
+    "next-auth": "^4.24.11",
+    "postcss": "^8.5.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwindcss": "^3.4.17"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20.17.50",
+    "@types/react": "^18.3.22",
+    "@types/react-dom": "^18.3.7",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^14.1.0",
+    "typescript": "^5.8.3"
+  },
+  "description": "A web application for managing and redeeming LinkedIn Premium coupon codes.",
+  "main": "tailwind.config.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
