@@ -36,19 +36,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     } else if (req.method === 'POST') {
       try {
-        const { claimLink } = req.body;
-        console.log('Received claim link:', claimLink);
+        const { claimLink, name, daysUntilExpiry } = req.body;
+        console.log('Received claim link:', claimLink, 'name:', name, 'days until expiry:', daysUntilExpiry);
 
         if (!claimLink) {
           return res.status(400).json({ error: 'Claim link is required' });
         }
 
+        if (!daysUntilExpiry || daysUntilExpiry < 1) {
+          return res.status(400).json({ error: 'Days until expiry must be at least 1' });
+        }
+
         const code = nanoid(10); // Generate a unique 10-character code
         console.log('Generated code:', code);
+
+        // Calculate expiration date
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + parseInt(daysUntilExpiry));
+        // Set time to end of day (23:59:59)
+        expiresAt.setHours(23, 59, 59, 999);
 
         const coupon = await Coupon.create({
           code,
           claimLink,
+          name: name || 'general',
+          expiresAt: expiresAt.toISOString(),
           createdBy: session?.user?.email || 'admin',
         });
         console.log('Coupon created:', coupon);

@@ -10,6 +10,10 @@ const couponSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  name: {
+    type: String,
+    default: 'general',
+  },
   isClaimed: {
     type: Boolean,
     default: false,
@@ -25,6 +29,10 @@ const couponSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now,
+  },
+  expiresAt: {
+    type: Date,
+    required: true,
   },
   createdBy: {
     type: String,
