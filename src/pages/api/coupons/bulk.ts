@@ -11,7 +11,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const session = await getServerSession(req, res, authOptions);
+    const session = await getServerSession(req, res, authOptions) as { user?: { email?: string } };
     if (!session) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
@@ -38,6 +38,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           name: name || 'general',
           expiresAt: expiresAt(),
           createdBy,
+          source: 'added',
         });
         return coupon;
       })

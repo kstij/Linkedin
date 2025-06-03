@@ -9,11 +9,18 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@chakra-ui/react": "^3.19.2",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "@headlessui/react": "^2.2.4",
     "@heroicons/react": "^2.2.0",
+    "@prisma/client": "^6.8.2",
+    "@types/formidable": "^3.4.5",
     "autoprefixer": "^10.4.21",
     "bcryptjs": "^2.4.3",
     "file-saver": "^2.0.5",
-    "framer-motion": "^12.12.2",
+    "formidable": "^3.5.4",
+    "framer-motion": "^12.16.0",
     "mongoose": "^8.15.0",
     "nanoid": "^5.1.5",
     "next": "^14.1.0",
@@ -21,6 +28,7 @@
     "postcss": "^8.5.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-hot-toast": "^2.5.2",
     "tailwindcss": "^3.4.17"
   },
   "devDependencies": {

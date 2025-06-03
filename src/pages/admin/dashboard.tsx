@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/router';
-import { PlusIcon, ArrowRightOnRectangleIcon, ClockIcon } from '@heroicons/react/24/solid';
+import { PlusIcon, ArrowRightOnRectangleIcon, ClockIcon, CalendarIcon } from '@heroicons/react/24/solid';
 import Head from 'next/head';
 import { saveAs } from 'file-saver';
+import Navbar from '@/components/Navbar';
+import { GetServerSideProps } from 'next';
+import { getSession } from 'next-auth/react';
 
 interface Coupon {
   _id: string;
@@ -19,6 +22,7 @@ interface Coupon {
   createdAt: string;
   expiresAt: string;
   createdBy: string;
+  source?: 'imported' | 'added';
 }
 
 const formatDate = (dateString: string | null | undefined) => {
@@ -111,7 +115,26 @@ const getStatusBadge = (coupon: Coupon) => {
   );
 };
 
-export default function Dashboard() {
+export const getServerSideProps: GetServerSideProps = async (context) => {
+  const session = await getSession(context);
+
+  if (!session) {
+    return {
+      redirect: {
+        destination: '/admin/login',
+        permanent: false,
+      },
+    };
+  }
+
+  return {
+    props: {
+      session,
+    },
+  };
+};
+
+export default function AdminDashboard() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [coupons, setCoupons] = useState<Coupon[]>([]);
@@ -126,8 +149,12 @@ export default function Dashboard() {
   const [daysToAdd, setDaysToAdd] = useState('2');
   const [extendLoading, setExtendLoading] = useState(false);
   const [filter, setFilter] = useState<'all' | 'claimed' | 'unclaimed' | 'expired' | 'extended'>('all');
-  const [bulkLinks, setBulkLinks] = useState('');
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [newLink, setNewLink] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [dateRange, setDateRange] = useState<'today' | 'yesterday' | 'last7days' | 'last30days' | 'custom'>('today');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
 
   useEffect(() => {
     console.log('Session status:', status);
@@ -178,33 +205,78 @@ export default function Dashboard() {
     setError('');
 
     try {
-      console.log('Adding new coupon with link:', claimLink, 'name:', name, 'days until expiry:', daysUntilExpiry);
-      const response = await fetch('/api/coupons', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({ claimLink, name, daysUntilExpiry: parseInt(daysUntilExpiry) }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('Failed to add coupon:', response.status, errorData);
-        throw new Error(errorData.error || 'Failed to add coupon');
+      // Split the input by newlines and filter out empty lines
+      const links = claimLink.split('\n').map(l => l.trim()).filter(Boolean);
+      
+      if (links.length === 0) {
+        throw new Error('Please enter at least one link');
       }
 
-      const newCoupon = await response.json();
-      console.log('Coupon added successfully:', newCoupon);
-      setCoupons([newCoupon, ...coupons]);
+      // If only one link, use the single coupon endpoint
+      if (links.length === 1) {
+        const response = await fetch('/api/coupons', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({ 
+            claimLink: links[0], 
+            name, 
+            daysUntilExpiry: parseInt(daysUntilExpiry) 
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || 'Failed to add coupon');
+        }
+
+        const newCoupon = await response.json();
+        setCoupons([newCoupon, ...coupons]);
+        setSuccess('Coupon added successfully!');
+      } else {
+        // If multiple links, use the bulk endpoint
+        const response = await fetch('/api/coupons/bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ 
+            links, 
+            name, 
+            daysUntilExpiry: parseInt(daysUntilExpiry) 
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || 'Failed to add bulk coupons');
+        }
+
+        const newCoupons = await response.json();
+        setCoupons([...newCoupons, ...coupons]);
+        setSuccess(`${links.length} coupons added successfully!`);
+
+        // Automatically download codes as text file
+        const codes = newCoupons.map((coupon: Coupon) => coupon.code).join('\n');
+        const blob = new Blob([codes], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `linkedin-premium-codes-${new Date().toISOString().split('T')[0]}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
       setClaimLink('');
       setName('');
-      setDaysUntilExpiry('2'); // Reset to default
-      setSuccess('Coupon added successfully!');
+      setDaysUntilExpiry('2');
       setTimeout(() => setSuccess(''), 3000);
     } catch (error) {
-      console.error('Error in handleAddCoupon:', error);
-      setError(error instanceof Error ? error.message : 'Failed to add coupon');
+      console.error('Error adding coupon(s):', error);
+      setError(error instanceof Error ? error.message : 'Failed to add coupon(s)');
     } finally {
       setLoading(false);
     }
@@ -255,41 +327,6 @@ export default function Dashboard() {
     }
   };
 
-  // Bulk add handler
-  const handleBulkAdd = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBulkLoading(true);
-    setError('');
-    setSuccess('');
-    const links = bulkLinks.split('\n').map(l => l.trim()).filter(Boolean);
-    if (links.length === 0) {
-      setError('Please enter at least one link.');
-      setBulkLoading(false);
-      return;
-    }
-    try {
-      const response = await fetch('/api/coupons/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ links, name, daysUntilExpiry: parseInt(daysUntilExpiry) }),
-      });
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to add bulk coupons');
-      }
-      const newCoupons = await response.json();
-      setCoupons([...newCoupons, ...coupons]);
-      setBulkLinks('');
-      setSuccess('Bulk coupons added successfully!');
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to add bulk coupons');
-    } finally {
-      setBulkLoading(false);
-    }
-  };
-
   // Calculate summary stats
   const claimedCount = coupons.filter(c => c.isClaimed).length;
   const unclaimedCount = coupons.filter(c => !c.isClaimed && new Date(c.expiresAt) > new Date()).length;
@@ -306,10 +343,55 @@ export default function Dashboard() {
     return true;
   });
 
+  // Add date filtering function
+  const getFilteredCouponsByDate = () => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const last7Days = new Date(today);
+    last7Days.setDate(last7Days.getDate() - 7);
+    const last30Days = new Date(today);
+    last30Days.setDate(last30Days.getDate() - 30);
+
+    return filteredCoupons.filter(coupon => {
+      const couponDate = new Date(coupon.createdAt);
+      
+      if (dateRange === 'today') {
+        return couponDate >= today;
+      }
+      if (dateRange === 'yesterday') {
+        return couponDate >= yesterday && couponDate < today;
+      }
+      if (dateRange === 'last7days') {
+        return couponDate >= last7Days;
+      }
+      if (dateRange === 'last30days') {
+        return couponDate >= last30Days;
+      }
+      if (dateRange === 'custom') {
+        const start = new Date(customStartDate);
+        const end = new Date(customEndDate);
+        end.setHours(23, 59, 59, 999);
+        return couponDate >= start && couponDate <= end;
+      }
+      return true;
+    });
+  };
+
+  // Update copy function to use date filter
+  const copyFilteredCodes = async () => {
+    const dateFilteredCoupons = getFilteredCouponsByDate();
+    const codes = dateFilteredCoupons.map(coupon => coupon.code).join('\n');
+    await navigator.clipboard.writeText(codes);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   // CSV Export function
   const exportToCSV = () => {
     const headers = [
-      'Code', 'Recipient', 'Status', 'Expiration Status', 'Time Remaining', 'Created At', 'Expires At', 'Claimed At', 'Claimed By IP', 'Claimed By UserAgent'
+      'Code', 'Recipient', 'Status', 'Expiration Status', 'Time Remaining', 'Created At', 'Expires At', 'Claimed At', 'Claimed By IP', 'Claimed By UserAgent', 'Source'
     ];
     const rows = filteredCoupons.map(coupon => [
       coupon.code,
@@ -329,7 +411,12 @@ export default function Dashboard() {
       formatDate(coupon.expiresAt),
       formatDate(coupon.claimedAt),
       coupon.claimedBy?.ip || '',
-      coupon.claimedBy?.userAgent || ''
+      coupon.claimedBy?.userAgent || '',
+      coupon.source === 'imported' ? (
+        <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">Imported</span>
+      ) : (
+        <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">Added</span>
+      )
     ]);
     const csvContent = [headers, ...rows].map(e => e.map(x => `"${String(x).replace(/"/g, '""')}"`).join(",")).join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -352,25 +439,14 @@ export default function Dashboard() {
     <>
       <Head>
         <title>Admin Dashboard - LinkedIn Premium Coupon</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
       </Head>
       <div className="min-h-screen bg-gray-100">
-        {/* Header */}
-        <header className="bg-white shadow sticky top-0 z-10">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">Admin Dashboard</h1>
-            <button
-              onClick={handleSignOut}
-              className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-900 bg-white hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 shadow"
-            >
-              <ArrowRightOnRectangleIcon className="h-5 w-5 mr-2" />
-              Sign Out
-            </button>
-          </div>
-        </header>
+        <Navbar />
 
         {/* Summary Cards */}
-        <div className="bg-gray-200 py-6 border-b border-gray-300">
-          <div className="max-w-5xl mx-auto grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 px-2">
+        <div className="bg-gray-200 py-3 sm:py-6 border-b border-gray-300">
+          <div className="max-w-5xl mx-auto grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-4 px-2">
             {[
               { label: 'DASHBOARD', filter: 'all', count: null },
               { label: 'Claimed', filter: 'claimed', count: claimedCount },
@@ -380,110 +456,80 @@ export default function Dashboard() {
             ].map(card => (
               <button
                 key={card.label}
-                className={`w-full bg-white rounded-xl shadow flex flex-col items-center justify-center py-6 px-2 focus:outline-none transition border-2 ${filter === card.filter ? 'border-gray-900 shadow-lg scale-105' : 'border-gray-200'} hover:shadow-lg hover:scale-105`}
+                className={`w-full bg-white rounded-lg sm:rounded-xl shadow flex flex-col items-center justify-center py-3 sm:py-6 px-2 focus:outline-none transition border-2 ${filter === card.filter ? 'border-gray-900 shadow-lg scale-105' : 'border-gray-200'} hover:shadow-lg hover:scale-105`}
                 onClick={() => setFilter(card.filter as any)}
               >
-                <span className="text-base font-semibold text-gray-800 mb-1">{card.label}</span>
-                {card.count !== null && <span className="text-xl font-bold text-gray-900">{card.count}</span>}
+                <span className="text-sm sm:text-base font-semibold text-gray-800 mb-1">{card.label}</span>
+                {card.count !== null && <span className="text-lg sm:text-xl font-bold text-gray-900">{card.count}</span>}
               </button>
             ))}
           </div>
         </div>
 
-        <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <main className="max-w-7xl mx-auto py-4 sm:py-6 px-3 sm:px-6 lg:px-8">
           {/* Add Coupon Form */}
-          <div className="bg-white shadow rounded-lg p-6 mb-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Add New Coupon</h2>
-            <form onSubmit={handleAddCoupon} className="space-y-4">
+          <div className="bg-white shadow rounded-lg p-6 mb-6 border border-gray-200">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Add New Coupon</h2>
+            <form onSubmit={handleAddCoupon} className="space-y-5">
               <div>
-                <label htmlFor="claimLink" className="block text-sm font-medium text-gray-700">
-                  LinkedIn Premium Claim Link
+                <label htmlFor="claimLink" className="block text-sm font-semibold text-gray-700 mb-1">
+                  LinkedIn Premium Claim Link(s)
                 </label>
-                <div className="mt-1">
-                  <input
-                    type="text"
-                    id="claimLink"
-                    value={claimLink}
-                    onChange={(e) => setClaimLink(e.target.value)}
-                    className="shadow-sm focus:ring-primary focus:border-primary block w-full sm:text-sm border-gray-300 rounded-md"
-                    placeholder="https://www.linkedin.com/premium/..."
-                    required
-                  />
-                </div>
+                <textarea
+                  id="claimLink"
+                  value={claimLink}
+                  onChange={(e) => setClaimLink(e.target.value)}
+                  rows={3}
+                  className="w-full rounded-lg border border-gray-300 focus:border-primary focus:ring-2 focus:ring-primary/30 p-3 text-sm shadow-sm transition placeholder-gray-400"
+                  required
+                />
               </div>
-              <div>
-                <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                  Seller Name
-                </label>
-                <div className="mt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <div>
+                  <label htmlFor="name" className="block text-sm font-semibold text-gray-700 mb-1">
+                    Seller Name
+                  </label>
                   <input
                     type="text"
                     id="name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="shadow-sm focus:ring-primary focus:border-primary block w-full sm:text-sm border-gray-300 rounded-md"
-                    placeholder="Seller name (optional)"
+                    className="w-full rounded-lg border border-gray-300 focus:border-primary focus:ring-2 focus:ring-primary/30 p-3 text-sm shadow-sm transition"
                   />
                 </div>
-              </div>
-              <div>
-                <label htmlFor="daysUntilExpiry" className="block text-sm font-medium text-gray-700">
-                  Days Until Expiry
-                </label>
-                <div className="mt-1">
+                <div>
+                  <label htmlFor="daysUntilExpiry" className="block text-sm font-semibold text-gray-700 mb-1">
+                    Days Until Expiry
+                  </label>
                   <input
                     type="number"
                     id="daysUntilExpiry"
                     value={daysUntilExpiry}
                     onChange={(e) => setDaysUntilExpiry(e.target.value)}
-                    className="shadow-sm focus:ring-primary focus:border-primary block w-full sm:text-sm border-gray-300 rounded-md"
+                    className="w-full rounded-lg border border-gray-300 focus:border-primary focus:ring-2 focus:ring-primary/30 p-3 text-sm shadow-sm transition"
                     min="1"
                     required
                   />
                 </div>
-                <p className="mt-1 text-sm text-gray-500">
-                  The coupon will expire after this many days
-                </p>
               </div>
               <div className="flex justify-end">
                 <button
                   type="submit"
                   disabled={loading}
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-primary text-white font-semibold shadow hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-primary/40 transition disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  <PlusIcon className="h-5 w-5 mr-2" />
-                  {loading ? 'Adding...' : 'Add Coupon'}
+                  <PlusIcon className="h-5 w-5" />
+                  {loading ? 'Adding...' : 'Add Coupon(s)'}
                 </button>
               </div>
             </form>
-            <div className="my-8 border-t border-gray-200"></div>
-            <form onSubmit={handleBulkAdd} className="space-y-4">
-              <label htmlFor="bulkLinks" className="block text-sm font-medium text-gray-700">
-                Bulk Add LinkedIn Premium Claim Links (one per line)
-              </label>
-              <textarea
-                id="bulkLinks"
-                value={bulkLinks}
-                onChange={e => setBulkLinks(e.target.value)}
-                rows={5}
-                className="block w-full rounded-md border-gray-300 shadow-sm focus:ring-gray-900 focus:border-gray-900 font-mono text-sm"
-                placeholder="Paste multiple LinkedIn claim links here, one per line..."
-              />
-              <button
-                type="submit"
-                disabled={bulkLoading}
-                className="inline-flex items-center px-4 py-2 border border-gray-400 text-sm font-medium rounded-md text-gray-900 bg-white hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 shadow"
-              >
-                {bulkLoading ? 'Adding...' : 'Add Bulk Coupons'}
-              </button>
-            </form>
             {error && (
-              <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-md">
+              <div className="mt-3 sm:mt-4 p-3 sm:p-4 bg-red-50 border border-red-200 rounded-md">
                 <p className="text-sm text-red-600">{error}</p>
               </div>
             )}
             {success && (
-              <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-md">
+              <div className="mt-3 sm:mt-4 p-3 sm:p-4 bg-green-50 border border-green-200 rounded-md">
                 <p className="text-sm text-green-600">{success}</p>
               </div>
             )}
@@ -536,50 +582,58 @@ export default function Dashboard() {
           )}
 
           {/* Coupons List */}
-          <div className="bg-white shadow-lg rounded-xl overflow-hidden mt-8">
-            <div className="px-4 sm:px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-4">
-              <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Coupon List</h2>
-              <button
-                onClick={exportToCSV}
-                className="inline-flex items-center px-4 py-2 border border-gray-400 text-sm font-medium rounded-md text-gray-900 bg-white hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 shadow"
-              >
-                Export CSV
-              </button>
-            </div>
-            {filteredCoupons.length === 0 ? (
-              <div className="p-6 text-center text-gray-500">
-                No coupons found for this filter.
+          <div className="bg-white shadow-lg rounded-xl overflow-hidden">
+            <div className="px-3 sm:px-6 py-3 sm:py-4 border-b border-gray-200">
+              <div className="flex flex-col sm:flex-row justify-between items-center gap-3 sm:gap-4">
+                <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Coupon List</h2>
+                <div className="w-full sm:w-auto flex gap-2">
+                  <button
+                    onClick={copyFilteredCodes}
+                    className="flex-1 sm:flex-none inline-flex items-center justify-center px-3 sm:px-4 py-2 border border-gray-400 text-sm font-medium rounded-md text-gray-900 bg-white hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 shadow"
+                  >
+                    {copied ? 'Copied!' : 'Copy Codes'}
+                  </button>
+                  <button
+                    onClick={exportToCSV}
+                    className="flex-1 sm:flex-none inline-flex items-center justify-center px-3 sm:px-4 py-2 border border-gray-400 text-sm font-medium rounded-md text-gray-900 bg-white hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 shadow"
+                  >
+                    Export CSV
+                  </button>
+                </div>
               </div>
-            ) : (
-              <div className="overflow-x-auto">
+            </div>
+            
+            <div className="overflow-x-auto">
+              <div className="inline-block min-w-full align-middle">
                 <table className="min-w-full divide-y divide-gray-200 rounded-xl overflow-hidden text-sm">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700 uppercase tracking-wider">S. No.</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700 uppercase tracking-wider">Code</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700 uppercase tracking-wider">Seller</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700 uppercase tracking-wider">Status</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700 uppercase tracking-wider">Expiration Status</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700 uppercase tracking-wider">Time Remaining</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700 uppercase tracking-wider">Created At</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700 uppercase tracking-wider">Expires At</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700 uppercase tracking-wider">Claimed At</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700 uppercase tracking-wider">Claimed By</th>
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-left font-semibold text-gray-700 uppercase tracking-wider">S. No.</th>
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-left font-semibold text-gray-700 uppercase tracking-wider">Code</th>
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-left font-semibold text-gray-700 uppercase tracking-wider">Seller</th>
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-left font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-left font-semibold text-gray-700 uppercase tracking-wider">Exp. Status</th>
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-left font-semibold text-gray-700 uppercase tracking-wider">Time Left</th>
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-left font-semibold text-gray-700 uppercase tracking-wider">Created</th>
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-left font-semibold text-gray-700 uppercase tracking-wider">Expires</th>
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-left font-semibold text-gray-700 uppercase tracking-wider">Claimed</th>
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-left font-semibold text-gray-700 uppercase tracking-wider">Claimed By</th>
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {filteredCoupons.map((coupon, idx) => (
+                    {getFilteredCouponsByDate().map((coupon, idx) => (
                       <tr key={coupon._id} className={idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-                        <td className="px-4 py-3 whitespace-nowrap text-gray-700 font-semibold">{idx + 1}</td>
-                        <td className="px-4 py-3 whitespace-nowrap font-mono font-medium text-gray-900">{coupon.code}</td>
-                        <td className="px-4 py-3 whitespace-nowrap">{coupon.name}</td>
-                        <td className="px-4 py-3 whitespace-nowrap">{getStatusBadge(coupon)}</td>
-                        <td className="px-4 py-3 whitespace-nowrap">{getExpirationStatus(coupon, handleExtendClick)}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-gray-600">{getTimeRemaining(coupon.expiresAt)}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-gray-500">{formatDate(coupon.createdAt)}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-gray-500">{formatDate(coupon.expiresAt)}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-gray-500">{formatDate(coupon.claimedAt)}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-gray-500">
+                        <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-gray-700 font-semibold">{idx + 1}</td>
+                        <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap font-mono font-medium text-gray-900">{coupon.code}</td>
+                        <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap">{coupon.name}</td>
+                        <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap">{getStatusBadge(coupon)}</td>
+                        <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap">{getExpirationStatus(coupon, handleExtendClick)}</td>
+                        <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-gray-600">{getTimeRemaining(coupon.expiresAt)}</td>
+                        <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-gray-500">{formatDate(coupon.createdAt)}</td>
+                        <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-gray-500">{formatDate(coupon.expiresAt)}</td>
+                        <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-gray-500">{formatDate(coupon.claimedAt)}</td>
+                        <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-gray-500">
                           {coupon.claimedBy ? (
                             <div>
                               <div className="font-medium">IP: {coupon.claimedBy.ip}</div>
@@ -589,12 +643,19 @@ export default function Dashboard() {
                             '-'
                           )}
                         </td>
+                        <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap">
+                          {coupon.source === 'imported' ? (
+                            <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">Imported</span>
+                          ) : (
+                            <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">Added</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            )}
+            </div>
           </div>
         </main>
       </div>

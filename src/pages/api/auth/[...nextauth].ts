@@ -1,5 +1,8 @@
-import NextAuth from 'next-auth';
+import { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
+import prisma from '@/lib/prisma';
+import bcrypt from 'bcryptjs';
+import NextAuth from 'next-auth';
 
 // Extend the built-in session types
 declare module "next-auth" {
@@ -13,7 +16,7 @@ declare module "next-auth" {
   }
 }
 
-export default NextAuth({
+export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
       name: 'Credentials',
@@ -22,37 +25,25 @@ export default NextAuth({
         password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
-        try {
-          if (!credentials?.username || !credentials?.password) {
-            return null;
-          }
-          if (!process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD) {
-            return null;
-          }
-          if (credentials.username !== process.env.ADMIN_USERNAME) {
-            return null;
-          }
-          if (credentials.password !== process.env.ADMIN_PASSWORD) {
-            return null;
-          }
+        if (!credentials?.username || !credentials?.password) {
+          throw new Error('Please enter username and password');
+        }
+
+        // Default admin credentials
+        if (credentials.username === 'admin' && credentials.password === 'test') {
           return {
             id: '1',
             name: 'Admin',
             email: 'admin@example.com',
           };
-        } catch (error) {
-          return null;
         }
-      }
-    })
+
+        throw new Error('Invalid credentials');
+      },
+    }),
   ],
   session: {
     strategy: 'jwt',
-    maxAge: 30 * 24 * 60 * 60, // 30 days
-  },
-  pages: {
-    signIn: '/admin/login',
-    error: '/admin/login',
   },
   callbacks: {
     async jwt({ token, user }) {
@@ -68,5 +59,9 @@ export default NextAuth({
       return session;
     },
   },
-  debug: process.env.NODE_ENV === 'development',
-}); 
+  pages: {
+    signIn: '/login',
+  },
+};
+
+export default NextAuth(authOptions); 

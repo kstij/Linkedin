@@ -1,0 +1,47 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String      @id @default(auto()) @map("_id") @db.ObjectId
+  email     String      @unique
+  password  String
+  name      String?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  links     StoredLink[]
+  coupons   Coupon[]
+}
+
+model StoredLink {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  url         String
+  userId      String   @db.ObjectId
+  usedInCoupon Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id])
+  coupon      Coupon?  @relation(fields: [couponId], references: [id])
+  couponId    String?  @db.ObjectId
+}
+
+model Coupon {
+  id          String       @id @default(auto()) @map("_id") @db.ObjectId
+  code        String       @unique
+  claimLink   String       @unique
+  isClaimed   Boolean      @default(false)
+  expiresAt   DateTime
+  userId      String       @db.ObjectId
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  user        User         @relation(fields: [userId], references: [id])
+  storedLink  StoredLink?
+}

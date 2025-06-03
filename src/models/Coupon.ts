@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 
-const couponSchema = new mongoose.Schema({
+const CouponSchema = new mongoose.Schema({
   code: {
     type: String,
     required: true,
@@ -38,6 +38,11 @@ const couponSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+}, {
+  timestamps: true,
 });
 
-export default mongoose.models.Coupon || mongoose.model('Coupon', couponSchema); 
+// Prevent model overwrite error
+const Coupon = mongoose.models.Coupon || mongoose.model('Coupon', CouponSchema);
+
+export default Coupon; 

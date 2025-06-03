@@ -1,10 +1,11 @@
-import { NextApiRequest, NextApiResponse } from 'next';
-import connectDB from '@/lib/db';
+import type { NextApiRequest, NextApiResponse } from 'next';
+import connectDB from '@/lib/mongoose';
 import Coupon from '@/models/Coupon';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    res.setHeader('Allow', ['POST']);
+    return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 
   try {
@@ -12,24 +13,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const { code } = req.body;
 
     if (!code) {
-      return res.status(400).json({ error: 'Code is required' });
+      return res.status(400).json({ error: 'Coupon code is required' });
     }
 
     const coupon = await Coupon.findOne({ code });
 
     if (!coupon) {
-      return res.status(404).json({ error: 'Invalid coupon code' });
+      return res.status(404).json({ error: 'Coupon not found' });
     }
 
     if (coupon.isClaimed) {
       return res.status(400).json({ error: 'Coupon has already been claimed' });
     }
 
-    // Check if coupon is expired
-    if (new Date(coupon.expiresAt) < new Date()) {
-      return res.status(400).json({ 
-        error: 'Coupon has expired. Please contact the admin for more info.' 
-      });
+    const now = new Date();
+    if (new Date(coupon.expiresAt) < now) {
+      return res.status(400).json({ error: 'Coupon has expired' });
     }
 
     // Get client IP and user agent
@@ -38,7 +37,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Update coupon
     coupon.isClaimed = true;
-    coupon.claimedAt = new Date();
+    coupon.claimedAt = now;
     coupon.claimedBy = {
       ip: ip as string,
       userAgent: userAgent as string,
@@ -51,7 +50,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       claimLink: coupon.claimLink 
     });
   } catch (error) {
-    console.error('Error claiming coupon:', error);
-    res.status(500).json({ error: 'Failed to claim coupon' });
+    console.error('Claim error:', error);
+    res.status(500).json({ 
+      error: 'Failed to claim coupon',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 } 
