@@ -1,14 +1,14 @@
-import { Fragment, useState } from 'react';
+import { Fragment } from 'react';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
 import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import { signOut } from 'next-auth/react';
 
 const navigation = [
   { name: 'Dashboard', href: '/admin/dashboard' },
-  { name: 'Import', href: '/admin/import' },
+  { name: 'Database', href: '/admin/database' },
   { name: 'Analytics', href: '/admin/analytics' },
-  { name: 'Settings', href: '/admin/settings' },
 ];
 
 function classNames(...classes: string[]) {
@@ -17,22 +17,9 @@ function classNames(...classes: string[]) {
 
 export default function Navbar() {
   const router = useRouter();
-  const [showAnalytics, setShowAnalytics] = useState(false);
-  const [analytics, setAnalytics] = useState<any>(null);
-  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
 
-  const fetchAnalytics = async () => {
-    setLoadingAnalytics(true);
-    try {
-      const res = await fetch('/api/coupons?stats=1', { credentials: 'include' });
-      if (res.ok) {
-        setAnalytics(await res.json());
-      }
-    } catch (e) {
-      setAnalytics(null);
-    } finally {
-      setLoadingAnalytics(false);
-    }
+  const handleSignOut = async () => {
+    await signOut({ redirect: true, callbackUrl: '/' });
   };
 
   return (
@@ -58,11 +45,6 @@ export default function Navbar() {
                           : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700',
                         'inline-flex items-center border-b-2 px-1 pt-1 text-sm font-medium'
                       )}
-                      onClick={item.name === 'Analytics' ? (e) => {
-                        e.preventDefault();
-                        setShowAnalytics(true);
-                        fetchAnalytics();
-                      } : undefined}
                     >
                       {item.name}
                     </Link>
@@ -104,23 +86,8 @@ export default function Navbar() {
                       </Menu.Item>
                       <Menu.Item>
                         {({ active }: { active: boolean }) => (
-                          <Link
-                            href="/admin/settings"
-                            className={classNames(
-                              active ? 'bg-gray-100' : '',
-                              'block px-4 py-2 text-sm text-gray-700'
-                            )}
-                          >
-                            Settings
-                          </Link>
-                        )}
-                      </Menu.Item>
-                      <Menu.Item>
-                        {({ active }: { active: boolean }) => (
                           <button
-                            onClick={() => {
-                              // Add sign out logic here
-                            }}
+                            onClick={handleSignOut}
                             className={classNames(
                               active ? 'bg-gray-100' : '',
                               'block w-full text-left px-4 py-2 text-sm text-gray-700'
@@ -186,17 +153,8 @@ export default function Navbar() {
                   Your Profile
                 </Disclosure.Button>
                 <Disclosure.Button
-                  as={Link}
-                  href="/admin/settings"
-                  className="block px-4 py-2 text-base font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800"
-                >
-                  Settings
-                </Disclosure.Button>
-                <Disclosure.Button
                   as="button"
-                  onClick={() => {
-                    // Add sign out logic here
-                  }}
+                  onClick={handleSignOut}
                   className="block w-full text-left px-4 py-2 text-base font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800"
                 >
                   Sign out
@@ -204,31 +162,6 @@ export default function Navbar() {
               </div>
             </div>
           </Disclosure.Panel>
-
-          {/* Analytics Modal/Dropdown */}
-          {showAnalytics && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-30">
-              <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md relative">
-                <button className="absolute top-2 right-2 text-gray-500 hover:text-gray-700" onClick={() => setShowAnalytics(false)}>&times;</button>
-                <h2 className="text-lg font-bold mb-4">Analytics</h2>
-                {loadingAnalytics ? (
-                  <div>Loading...</div>
-                ) : analytics ? (
-                  <div className="space-y-2 text-sm">
-                    <div><b>Total Coupons:</b> {analytics.total}</div>
-                    <div><b>Claimed:</b> {analytics.claimed}</div>
-                    <div><b>Unclaimed:</b> {analytics.unclaimed}</div>
-                    <div><b>Expired:</b> {analytics.expired}</div>
-                    <div><b>Imported Coupons:</b> {analytics.imported}</div>
-                    <div><b>Added Coupons:</b> {analytics.added}</div>
-                    <div><b>Unique Emails:</b> {analytics.uniqueEmails?.join(', ')}</div>
-                  </div>
-                ) : (
-                  <div className="text-red-500">Failed to load analytics.</div>
-                )}
-              </div>
-            </div>
-          )}
         </>
       )}
     </Disclosure>

@@ -17,48 +17,26 @@ export default async function handler(
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    console.log('Session user ID:', session.user.id); // Debug log
-
     const client = await clientPromise;
     const db = client.db();
 
-    // Get total links
+    // Get total links in storage (like total money in bank)
     const totalLinks = await db.collection('storedLinks').countDocuments({
       userId: session.user.id
     });
 
-    // Get available links (not used in any coupon)
+    // Get available links (not used in coupons yet)
     const availableLinks = await db.collection('storedLinks').countDocuments({
       userId: session.user.id,
       usedInCoupon: false
     });
 
-    console.log('Stats query results:', { totalLinks, availableLinks }); // Debug log
-
-    // Get some sample links for debugging
-    const sampleLinks = await db.collection('storedLinks')
-      .find({ userId: session.user.id })
-      .limit(5)
-      .toArray();
-
-    console.log('Sample links:', sampleLinks); // Debug log
-
-    const response = {
-      storedLinks: {
-        total: totalLinks,
-        available: availableLinks
-      },
-      debug: {
-        userId: session.user.id,
-        sampleLinks
-      }
-    };
-
-    console.log('Sending response:', response); // Debug log
-
-    return res.status(200).json(response);
+    return res.status(200).json({
+      totalLinks,
+      availableLinks
+    });
   } catch (error) {
-    console.error('Error fetching stats:', error);
+    console.error('Stats error:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 } 

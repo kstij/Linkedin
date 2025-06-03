@@ -25,6 +25,13 @@ interface Coupon {
   source?: 'imported' | 'added';
 }
 
+interface DashboardStats {
+  totalLinks: number;
+  availableLinks: number;
+  totalCoupons: number;
+  activeCoupons: number;
+}
+
 const formatDate = (dateString: string | null | undefined) => {
   if (!dateString) return '-';
   try {
@@ -155,6 +162,9 @@ export default function AdminDashboard() {
   const [dateRange, setDateRange] = useState<'today' | 'yesterday' | 'last7days' | 'last30days' | 'custom'>('today');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
+  const [stats, setStats] = useState<DashboardStats>({ totalLinks: 0, availableLinks: 0, totalCoupons: 0, activeCoupons: 0 });
+  const [showCouponPopup, setShowCouponPopup] = useState(false);
+  const [generatedCode, setGeneratedCode] = useState('');
 
   useEffect(() => {
     console.log('Session status:', status);
@@ -166,6 +176,7 @@ export default function AdminDashboard() {
     } else if (status === 'authenticated') {
       console.log('User is authenticated, fetching coupons...');
       fetchCoupons();
+      fetchStats();
     }
   }, [status, session]);
 
@@ -199,6 +210,17 @@ export default function AdminDashboard() {
     }
   };
 
+  const fetchStats = async () => {
+    try {
+      const response = await fetch('/api/links/stats');
+      if (!response.ok) throw new Error('Failed to fetch stats');
+      const data = await response.json();
+      setStats(data);
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+    }
+  };
+
   const handleAddCoupon = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -223,7 +245,8 @@ export default function AdminDashboard() {
           body: JSON.stringify({ 
             claimLink: links[0], 
             name, 
-            daysUntilExpiry: parseInt(daysUntilExpiry) 
+            daysUntilExpiry: parseInt(daysUntilExpiry),
+            source: 'added'
           }),
         });
 
@@ -233,8 +256,12 @@ export default function AdminDashboard() {
         }
 
         const newCoupon = await response.json();
+        // Generate claimLink in the format http://localhost:3000/redeem/{code}
+        newCoupon.claimLink = `http://localhost:3000/redeem/${newCoupon.code}`;
         setCoupons([newCoupon, ...coupons]);
         setSuccess('Coupon added successfully!');
+        setGeneratedCode(newCoupon.code);
+        setShowCouponPopup(true);
       } else {
         // If multiple links, use the bulk endpoint
         const response = await fetch('/api/coupons/bulk', {
@@ -244,7 +271,8 @@ export default function AdminDashboard() {
           body: JSON.stringify({ 
             links, 
             name, 
-            daysUntilExpiry: parseInt(daysUntilExpiry) 
+            daysUntilExpiry: parseInt(daysUntilExpiry),
+            source: 'imported'
           }),
         });
 
@@ -254,6 +282,10 @@ export default function AdminDashboard() {
         }
 
         const newCoupons = await response.json();
+        // Generate claimLink for each coupon
+        newCoupons.forEach((coupon: Coupon) => {
+          coupon.claimLink = `http://localhost:3000/redeem/${coupon.code}`;
+        });
         setCoupons([...newCoupons, ...coupons]);
         setSuccess(`${links.length} coupons added successfully!`);
 
@@ -274,6 +306,7 @@ export default function AdminDashboard() {
       setName('');
       setDaysUntilExpiry('2');
       setTimeout(() => setSuccess(''), 3000);
+      fetchStats();
     } catch (error) {
       console.error('Error adding coupon(s):', error);
       setError(error instanceof Error ? error.message : 'Failed to add coupon(s)');
@@ -659,6 +692,19 @@ export default function AdminDashboard() {
           </div>
         </main>
       </div>
+
+      {/* Coupon Code Popup */}
+      {showCouponPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-30">
+          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md relative">
+            <button className="absolute top-2 right-2 text-gray-500 hover:text-gray-700" onClick={() => setShowCouponPopup(false)}>&times;</button>
+            <h2 className="text-lg font-bold mb-4">Generated Coupon Code</h2>
+            <div className="break-words text-gray-800">
+              {generatedCode}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 } 
