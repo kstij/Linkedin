@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/router';
-import { PlusIcon, ArrowRightOnRectangleIcon, ClockIcon, CalendarIcon } from '@heroicons/react/24/solid';
+import { PlusIcon, ArrowRightOnRectangleIcon, ClockIcon, CalendarIcon, TrashIcon } from '@heroicons/react/24/solid';
 import Head from 'next/head';
 import { saveAs } from 'file-saver';
 import Navbar from '@/components/Navbar';
@@ -456,6 +456,27 @@ export default function AdminDashboard() {
     saveAs(blob, 'coupons.csv');
   };
 
+  // Delete coupon handler
+  const handleDeleteCoupon = async (couponId: string) => {
+    if (!window.confirm('Are you sure you want to delete this coupon?')) return;
+    try {
+      const response = await fetch('/api/coupons/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ couponId }),
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to delete coupon');
+      }
+      setCoupons(coupons.filter(c => c._id !== couponId));
+      setSuccess('Coupon deleted successfully!');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to delete coupon');
+    }
+  };
+
   if (status === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -652,6 +673,7 @@ export default function AdminDashboard() {
                       <th className="px-3 sm:px-4 py-2 sm:py-3 text-left font-semibold text-gray-700 uppercase tracking-wider">Claimed</th>
                       <th className="px-3 sm:px-4 py-2 sm:py-3 text-left font-semibold text-gray-700 uppercase tracking-wider">Claimed By</th>
                       <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
+                      <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -682,6 +704,15 @@ export default function AdminDashboard() {
                           ) : (
                             <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">Added</span>
                           )}
+                        </td>
+                        <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-center">
+                          <button
+                            onClick={() => handleDeleteCoupon(coupon._id)}
+                            className="text-red-600 hover:text-red-900 p-1 rounded"
+                            title="Delete Coupon"
+                          >
+                            <TrashIcon className="h-5 w-5" />
+                          </button>
                         </td>
                       </tr>
                     ))}
